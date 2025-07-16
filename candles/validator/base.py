@@ -36,9 +36,6 @@ from ..core.mocks import MockDendrite
 from ..core.utils import add_validator_args
 
 
-
-
-
 class BaseValidatorNeuron(BaseNeuron):
     """
     Base class for Bittensor validators. Your validator should inherit from this class.

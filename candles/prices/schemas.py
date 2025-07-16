@@ -1,5 +1,3 @@
-# Standard Lib
-
 # Third Party
 from pydantic import BaseModel
 

@@ -5,8 +5,6 @@ import bittensor
 from ..core.storage.json_storage import BaseJsonStorage
 
 
-
-
 class JsonValidatorStorage(BaseJsonStorage):
     """Handles storage and retrieval of validator predictions in JSON format.
 

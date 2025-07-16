@@ -1,6 +1,6 @@
 # Standard Lib
-from enum import StrEnum
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Optional
 
 # Third Party
@@ -20,10 +20,6 @@ class APIConfig:
 
 class PriceProvider(StrEnum):
     COINDESK = "coindesk"
-    """
-    params={"market":"cadli","instrument":"TAO-USD","limit":1,"aggregate":1,"fill":"true","apply_mapping":"true","response_format":"JSON","to_ts":1751648400,"groups":"OHLC","api_key":"d023a895c831a6dcabd0871471993a23123f0f9e83a9a50602fcea8e702ee4a0"},
-    headers={"Content-type":"application/json; charset=UTF-8"}
-    """
 
     @property
     def config(self) -> APIConfig:
