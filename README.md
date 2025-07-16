@@ -204,7 +204,7 @@ mkdir -p ~/.candles/data/
 cp hourly_predictions.csv ~/.candles/data/
 
 # Your miner will now use these predictions automatically
-./miner
+./miner_<wallet_name>_<hotkey_name>
 ```
 
 ## 🌐 Network Information
