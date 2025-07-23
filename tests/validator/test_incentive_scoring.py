@@ -483,7 +483,6 @@ class TestValidatorInitialization:
                     assert validator.scoring_task is None
 
 
-@pytest.mark.integration
 class TestIncentiveScoringIntegration:
     """Integration tests for the complete scoring flow."""
 
