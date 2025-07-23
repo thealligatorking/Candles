@@ -33,16 +33,15 @@ jobs:
       run: |
         uv run ruff check .
 
-    - name: Run tests with pytest
+    - name: Run tests with pytest (with coverage on 3.12)
       run: |
-        uv run pytest tests/ --asyncio-mode=auto -v
-
-    - name: Upload coverage reports
-      if: matrix.python-version == '3.12'
-      run: |
-        uv add --dev coverage[toml]
-        uv run coverage run -m pytest tests/ --asyncio-mode=auto
-        uv run coverage xml
+        if [ "${{ matrix.python-version }}" = "3.12" ]; then
+          uv add --dev coverage[toml]
+          uv run coverage run -m pytest tests/ --asyncio-mode=auto -v
+          uv run coverage xml
+        else
+          uv run pytest tests/ --asyncio-mode=auto -v
+        fi
       continue-on-error: true
 
     - name: Upload coverage to Codecov
