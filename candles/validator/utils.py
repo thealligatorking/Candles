@@ -12,8 +12,6 @@ from ..core.data import CandlePrediction
 from ..core.synapse import GetCandlePrediction
 from ..core.utils import get_next_timestamp_by_interval, is_miner
 
-# from candles.validator.validator import Validator
-
 class ProcessedResponse(BaseModel):
     response: GetCandlePrediction
     uid: int
