@@ -73,7 +73,7 @@ class PriceClient(BasePriceClient):
                     data = await response.json()
                     return CoinDeskResponseOHLC.parse_response(data["Data"][0])
 
-    async def get_weekly_candle(self, symbol: str, week_start_timestamp: int) -> CoinDeskResponseOHLC:
+    async def get_weekly_candle(self, symbol: str, week_start_timestamp: int) -> CoinDeskResponseOHLC | None:
         if self.provider_enum != PriceProvider.COINDESK:
             raise ValueError("Weekly candle method only supports CoinDesk provider")
 
@@ -96,9 +96,10 @@ class PriceClient(BasePriceClient):
         # Fetch both hourly candles
         open_candle = await self.get_price_by_interval(symbol, open_interval_id)
         close_candle = await self.get_price_by_interval(symbol, close_interval_id)
-        bittensor.logging.info(f"Open candle: {open_candle}")
-        bittensor.logging.info(f"Close candle: {close_candle}")
-        # Create weekly candle with open from Sunday start and close from Saturday end
+        if open_candle is None or close_candle is None:
+            bittensor.logging.error(f"Failed to fetch candles for {symbol} between {week_start_ts} and {week_end_ts}")
+            return None
+
         from ..core.data import CandleColor
         weekly_color = CandleColor.GREEN if close_candle.close >= open_candle.open else CandleColor.RED
 
