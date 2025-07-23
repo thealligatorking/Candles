@@ -88,12 +88,12 @@ class MockDendrite(bt.dendrite):
                     s.dummy_output = s.dummy_input * 2
                     s.dendrite.status_code = 200
                     s.dendrite.status_message = "OK"
-                    synapse.dendrite.process_time = str(process_time)
+                    synapse.dendrite.process_time = process_time # type: ignore
                 else:
                     s.dummy_output = 0
                     s.dendrite.status_code = 408
                     s.dendrite.status_message = "Timeout"
-                    synapse.dendrite.process_time = str(timeout)
+                    synapse.dendrite.process_time = timeout # type: ignore
 
                 # Return the updated synapse object after deserializing if requested
                 return s.deserialize() if deserialize else s

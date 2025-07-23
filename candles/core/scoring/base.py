@@ -27,7 +27,7 @@ class BaseScorer(ABC):
     """Base class for prediction scoring."""
 
     @abstractmethod
-    async def score_prediction(self, prediction: CandlePrediction, actual_data: dict[str, Any] = None) -> ScoringResult:
+    async def score_prediction(self, prediction: CandlePrediction, actual_data: dict[str, Any] | None = None) -> ScoringResult:
         """Score a prediction against actual market data.
 
         Args:

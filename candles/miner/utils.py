@@ -52,7 +52,10 @@ def get_file_predictions(filename="hourly_predictions.csv", interval=TimeInterva
     # with the specified interval, miner_uid, and hotkey information
     predictions: list[CandlePrediction] = [
         build_prediction(
-            **prediction,  # Unpack the dictionary as keyword arguments
+            color=prediction["color"],
+            price=prediction["price"],
+            confidence=prediction["confidence"],
+            timestamp=prediction["timestamp"],
             interval=interval,  # Add the specified interval
             miner_uid=miner_uid,  # Add the miner UID
             hotkey=hotkey  # Add the miner hotkey

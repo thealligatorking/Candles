@@ -1,12 +1,14 @@
 # Standard Lib
-from dataclasses import dataclass
 from enum import StrEnum
+from dataclasses import dataclass
 from typing import Optional
+from datetime import datetime, timedelta, timezone
 
 # Third Party
 import aiohttp
-from cachetools import cached, TTLCache
 
+# Bittensor
+import bittensor
 # Local
 from .base import BasePriceClient
 from .schemas import CoinDeskResponseOHLC
@@ -47,8 +49,7 @@ class PriceClient(BasePriceClient):
         self.provider_enum = PriceProvider(provider)
         self.api_config = self.provider_enum.config
 
-    @cached(cache=TTLCache(maxsize=1024, ttl=500))
-    async def get_price_by_interval(self, symbol: str, interval_id: str) -> CoinDeskResponseOHLC:
+    async def get_price_by_interval(self, symbol: str, interval_id: str) -> CoinDeskResponseOHLC | None:
         if self.provider_enum == PriceProvider.COINDESK:
             timestamp, interval = interval_id.split("::")
 
@@ -57,6 +58,8 @@ class PriceClient(BasePriceClient):
                     coindesk_interval = "hours"
                 case "daily":
                     coindesk_interval = "days"
+                case "weekly":
+                    return await self.get_weekly_candle(symbol, int(timestamp))
                 case _:
                     raise ValueError(f"Unsupported interval: {interval}")
 
@@ -69,4 +72,40 @@ class PriceClient(BasePriceClient):
                     response.raise_for_status()
                     data = await response.json()
                     return CoinDeskResponseOHLC.parse_response(data["Data"][0])
+
+    async def get_weekly_candle(self, symbol: str, week_start_timestamp: int) -> CoinDeskResponseOHLC:
+        if self.provider_enum != PriceProvider.COINDESK:
+            raise ValueError("Weekly candle method only supports CoinDesk provider")
+
+        week_start = datetime.fromtimestamp(week_start_timestamp, tz=timezone.utc)
+
+        if week_start.weekday() != 0:
+            raise ValueError(f"Week start must be a Monday, got {week_start.strftime('%A')}")
+        if week_start.hour != 0 or week_start.minute != 0 or week_start.second != 0:
+            raise ValueError("Week start must be at midnight (00:00:00)")
+
+        week_end = week_start + timedelta(days=6, hours=23)
+
+        # Format timestamps for API calls
+        week_start_ts = int(week_start.timestamp())
+        week_end_ts = int(week_end.timestamp())
+
+        open_interval_id = f"{week_start_ts}::hourly"
+        close_interval_id = f"{week_end_ts}::hourly"
+
+        # Fetch both hourly candles
+        open_candle = await self.get_price_by_interval(symbol, open_interval_id)
+        close_candle = await self.get_price_by_interval(symbol, close_interval_id)
+        bittensor.logging.info(f"Open candle: {open_candle}")
+        bittensor.logging.info(f"Close candle: {close_candle}")
+        # Create weekly candle with open from Sunday start and close from Saturday end
+        from ..core.data import CandleColor
+        weekly_color = CandleColor.GREEN if close_candle.close >= open_candle.open else CandleColor.RED
+
+        return CoinDeskResponseOHLC(
+            open=open_candle.open,
+            close=close_candle.close,
+            timestamp=str(week_start_ts),
+            color=weekly_color
+        )
 

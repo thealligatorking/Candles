@@ -2,7 +2,12 @@
 import asyncio
 import os
 import traceback
+import json
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+# Third Party
+import aiofiles
 
 # Third Party
 import numpy as np
@@ -20,6 +25,7 @@ from .utils import get_miner_uids, send_predictions_to_miners
 from .storage import JsonValidatorStorage
 from ..core.scoring.batch_scorer import PredictionBatchScorer
 from ..prices.client import PriceClient
+from ..core.services.candlestao_client import CandleTAOClient, CandleTAOPredictionSubmission, CandleTAOScoreSubmission
 
 class Validator(BaseValidatorNeuron):
     """
@@ -46,6 +52,14 @@ class Validator(BaseValidatorNeuron):
         # Initialize scoring components
         self.price_client = PriceClient(api_key=api_key, provider="coindesk")
         self.batch_scorer = PredictionBatchScorer(self.price_client)
+
+        # Initialize CandleTAO client
+        try:
+            self.candletao_client = CandleTAOClient()
+            bittensor.logging.info("CandleTAO client initialized successfully")
+        except Exception as e:
+            bittensor.logging.warning(f"CandleTAO client initialization failed: {e}")
+            self.candletao_client = None
 
         # Background task management
         self.scoring_task = None
@@ -104,7 +118,7 @@ class Validator(BaseValidatorNeuron):
         ]
 
     @classmethod
-    def _get_closed_hourly_intervals(cls, now: datetime, current_timestamp: float) -> str:
+    def _get_closed_hourly_intervals(cls, now: datetime, current_timestamp: float) -> str | None:
         """
         Determines which hourly intervals have closed and are ready for scoring.
 
@@ -143,7 +157,7 @@ class Validator(BaseValidatorNeuron):
             return f"{int(prev_hour.timestamp())}::{TimeInterval.HOURLY}"
 
     @classmethod
-    def _get_closed_daily_intervals(cls, now: datetime, current_timestamp: float) -> str:
+    def _get_closed_daily_intervals(cls, now: datetime, current_timestamp: float) -> str | None:
         """
         Returns a list of closed daily interval IDs based on the current time.
         """
@@ -153,7 +167,7 @@ class Validator(BaseValidatorNeuron):
             return f"{int(prev_day.timestamp())}::{TimeInterval.DAILY}"
 
     @classmethod
-    def _get_closed_weekly_intervals(cls, now: datetime, current_timestamp: float) -> str:
+    def _get_closed_weekly_intervals(cls, now: datetime, current_timestamp: float) -> str | None:
         """
         Returns a list of closed weekly interval IDs based on the current time.
         """
@@ -263,6 +277,170 @@ class Validator(BaseValidatorNeuron):
                 bittensor.logging.error(f"Unexpected error in background scoring task: {e}")
                 await asyncio.sleep(60)
 
+    async def _write_scoring_results_to_file(self, scoring_results: dict[str, list], timestamp: datetime | None = None) -> None:
+        """
+        Write scoring results to a JSON file with interval_ids as top-level keys.
+
+        Args:
+            scoring_results: Dictionary of scoring results grouped by interval_id
+            timestamp: Optional timestamp for the scoring run (defaults to current time)
+        """
+        if not scoring_results:
+            bittensor.logging.debug("No scoring results to write to file")
+            return
+
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+
+        # Create the data directory if it doesn't exist
+        data_dir = Path.home() / ".candles" / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use a single filename for all scoring results
+        filename = "scoring_results.json"
+        filepath = data_dir / filename
+
+        try:
+            # Convert ScoringResult objects to dictionaries for JSON serialization
+            serializable_results = {}
+            for interval_id, results in scoring_results.items():
+                serializable_results[interval_id] = [
+                    {
+                        'prediction_id': result.prediction_id,
+                        'miner_uid': result.miner_uid,
+                        'interval_id': result.interval_id,
+                        'color_score': result.color_score,
+                        'price_score': result.price_score,
+                        'confidence_weight': result.confidence_weight,
+                        'final_score': result.final_score,
+                        'actual_color': result.actual_color,
+                        'actual_price': result.actual_price,
+                        'timestamp': timestamp.isoformat()
+                    }
+                    for result in results
+                ]
+
+            # Read existing data if file exists
+            existing_data = {}
+            if filepath.exists():
+                try:
+                    async with aiofiles.open(filepath, 'r') as f:
+                        content = await f.read()
+                        if content.strip():
+                            existing_data = json.loads(content)
+                            if not isinstance(existing_data, dict):
+                                # If the file contains a different format, start fresh
+                                existing_data = {}
+                except (json.JSONDecodeError, FileNotFoundError) as e:
+                    bittensor.logging.warning(f"Error reading existing scoring file: {e}. Starting fresh.")
+                    existing_data = {}
+
+            # Merge new results with existing data
+            for interval_id, new_results in serializable_results.items():
+                if interval_id in existing_data:
+                    # Add new results to existing interval
+                    existing_data[interval_id].extend(new_results)
+                else:
+                    # Create new interval entry
+                    existing_data[interval_id] = new_results
+
+            # Write back to file asynchronously
+            async with aiofiles.open(filepath, 'w') as f:
+                await f.write(json.dumps(existing_data, indent=2))
+
+            bittensor.logging.info(f"Scoring results appended to: {filepath}")
+
+        except Exception as e:
+            bittensor.logging.error(f"Error writing scoring results to file: {e}")
+
+    def _convert_predictions_to_candletao_format(self, predictions_data: dict[str, list[dict]]) -> list[CandleTAOPredictionSubmission]:
+        """Convert predictions data to CandleTAO submission format."""
+        submissions = []
+
+        for interval_id, predictions in predictions_data.items():
+            for prediction_dict in predictions:
+                try:
+                    submission = CandleTAOPredictionSubmission(
+                        prediction_id=prediction_dict['prediction_id'],
+                        miner_uid=prediction_dict['miner_uid'],
+                        hotkey=prediction_dict['hotkey'],
+                        prediction_date=datetime.fromisoformat(prediction_dict['prediction_date'].replace('Z', '+00:00')),
+                        interval_id=interval_id,
+                        is_closed=prediction_dict.get('is_closed', False),
+                        closed_date=datetime.fromisoformat(prediction_dict['closed_date'].replace('Z', '+00:00')) if prediction_dict.get('closed_date') else None,
+                        interval=prediction_dict['interval'],
+                        color=prediction_dict['color'],
+                        price=str(prediction_dict['price']),
+                        confidence=str(prediction_dict['confidence'])
+                    )
+                    submissions.append(submission)
+                except Exception as e:
+                    bittensor.logging.error(f"Error converting prediction to CandleTAO format: {e}")
+                    continue
+
+        return submissions
+
+    def _convert_scores_to_candletao_format(self, scoring_results: dict[str, list]) -> list[CandleTAOScoreSubmission]:
+        """Convert scoring results to CandleTAO submission format."""
+        submissions = []
+        timestamp = datetime.now(timezone.utc)
+
+        for interval_id, results in scoring_results.items():
+            for result in results:
+                try:
+                    submission = CandleTAOScoreSubmission(
+                        prediction_id=result.prediction_id,
+                        miner_uid=result.miner_uid,
+                        interval_id=interval_id,
+                        color_score=result.color_score,
+                        price_score=result.price_score,
+                        confidence_weight=result.confidence_weight,
+                        final_score=result.final_score,
+                        actual_color=result.actual_color,
+                        actual_price=result.actual_price,
+                        timestamp=timestamp
+                    )
+                    submissions.append(submission)
+                except Exception as e:
+                    bittensor.logging.error(f"Error converting score to CandleTAO format: {e}")
+                    continue
+
+        return submissions
+
+    async def _submit_predictions_to_candletao(self, predictions_data: dict[str, list[dict]]) -> None:
+        """Submit predictions to CandleTAO API."""
+        if not self.candletao_client:
+            bittensor.logging.debug("CandleTAO client not available, skipping prediction submission")
+            return
+
+        try:
+            submissions = self._convert_predictions_to_candletao_format(predictions_data)
+            if submissions:
+                bittensor.logging.info(f"Submitting {len(submissions)} predictions to CandleTAO")
+                response = await self.candletao_client.submit_predictions(submissions)
+                bittensor.logging.info(f"Successfully submitted predictions to CandleTAO: {response}")
+            else:
+                bittensor.logging.debug("No predictions to submit to CandleTAO")
+        except Exception as e:
+            bittensor.logging.error(f"Error submitting predictions to CandleTAO: {e}")
+
+    async def _submit_scores_to_candletao(self, scoring_results: dict[str, list]) -> None:
+        """Submit scores to CandleTAO API."""
+        if not self.candletao_client:
+            bittensor.logging.debug("CandleTAO client not available, skipping score submission")
+            return
+
+        try:
+            submissions = self._convert_scores_to_candletao_format(scoring_results)
+            if submissions:
+                bittensor.logging.info(f"Submitting {len(submissions)} scores to CandleTAO")
+                response = await self.candletao_client.submit_scores(submissions)
+                bittensor.logging.info(f"Successfully submitted scores to CandleTAO: {response}")
+            else:
+                bittensor.logging.debug("No scores to submit to CandleTAO")
+        except Exception as e:
+            bittensor.logging.error(f"Error submitting scores to CandleTAO: {e}")
+
     async def _score_and_update_weights_async(self) -> None:
         """
         Async version of score_and_update_weights that scores closed intervals and updates validator weights.
@@ -282,10 +460,20 @@ class Validator(BaseValidatorNeuron):
             # This retrieves all miner predictions that were made for these time periods
             if predictions_data := self._load_predictions_for_intervals(closed_intervals):
                 try:
+                    # Submit predictions to CandleTAO before scoring
+                    await self._submit_predictions_to_candletao(predictions_data)
+
                     # Step 3: Execute the scoring algorithm asynchronously
                     # This evaluates how accurate each miner's predictions were
                     bittensor.logging.debug(f"Running scoring async for {len(predictions_data)} intervals")
                     scoring_results = await self.batch_scorer.score_predictions_by_interval(predictions_data)
+
+                    if os.getenv("CANDLETAO_API_KEY"):
+                        # Submit scores to CandleTAO after scoring
+                        await self._submit_scores_to_candletao(scoring_results)
+
+                    # Write scoring results to file
+                    await self._write_scoring_results_to_file(scoring_results)
 
                     # Step 4: Extract miner scores from the scoring results
                     # This converts the raw scoring data into a format suitable for weight updates

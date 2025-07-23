@@ -36,6 +36,9 @@ from ..core.mocks import MockDendrite
 from ..core.utils import add_validator_args
 
 
+
+
+
 class BaseValidatorNeuron(BaseNeuron):
     """
     Base class for Bittensor validators. Your validator should inherit from this class.
@@ -112,6 +115,12 @@ class BaseValidatorNeuron(BaseNeuron):
 
             # Init sync with the network. Updates the metagraph.
             await self.sync_async()
+
+            # Serve axon for non-mock mode
+            if not self.config.neuron.axon_off:
+                await self.serve_axon_async()
+            else:
+                bittensor.logging.warning("axon off, not serving ip to chain.")
 
     def serve_axon(self):
         """Serve axon to enable external connections."""
@@ -407,7 +416,10 @@ class BaseValidatorNeuron(BaseNeuron):
         for attempt in range(max_retries):
             try:
                 async with self.lock:
-                    self._set_weights_internal()
+                    if self.config.mock:
+                        self._set_weights_internal()
+                    else:
+                        await self._set_weights_internal_async()
                     return
             except Exception as e:
                 if attempt < max_retries - 1:
@@ -445,7 +457,7 @@ class BaseValidatorNeuron(BaseNeuron):
         (
             processed_weight_uids,
             processed_weights,
-        ) = bittensor.utils.weight_utils.process_weights_for_netuid(
+        ) = bittensor.utils.weight_utils.process_weights_for_netuid( # type: ignore
             uids=self.metagraph.uids,
             weights=raw_weights,
             netuid=self.config.netuid,
@@ -455,11 +467,18 @@ class BaseValidatorNeuron(BaseNeuron):
         bittensor.logging.debug("processed_weights", processed_weights)
         bittensor.logging.debug("processed_weight_uids", processed_weight_uids)
 
+        # Check if we have any weights to set
+        if len(processed_weights) == 0:
+            bittensor.logging.warning("No weights to set - all scores are zero or below minimum threshold")
+            bittensor.logging.debug(f"Current scores: {self.scores}")
+            bittensor.logging.debug(f"Raw weights: {raw_weights}")
+            return
+
         # Convert to uint16 weights and uids.
         (
             uint_uids,
             uint_weights,
-        ) = bittensor.utils.weight_utils.convert_weights_and_uids_for_emit(
+        ) = bittensor.utils.weight_utils.convert_weights_and_uids_for_emit( # type: ignore
             uids=processed_weight_uids, weights=processed_weights
         )
         bittensor.logging.debug("uint_weights", uint_weights)
@@ -479,6 +498,116 @@ class BaseValidatorNeuron(BaseNeuron):
             bittensor.logging.info("set_weights on chain successfully!")
         else:
             bittensor.logging.error("set_weights failed", msg)
+
+    async def _set_weights_internal_async(self):
+        """Async internal method to set weights with proper error handling for AsyncSubtensor."""
+
+        # Check if self.scores contains any NaN values and log a warning if it does.
+        if np.isnan(self.scores).any():
+            bittensor.logging.warning(
+                "Scores contain NaN values. This may be due to a lack of responses from miners, or a bug in your reward functions."
+            )
+
+        # Calculate the average reward for each uid across non-zero values.
+        # Replace any NaN values with 0.
+        # Compute the norm of the scores
+        norm = np.linalg.norm(self.scores, ord=1, axis=0, keepdims=True)
+
+        # Check if the norm is zero or contains NaN values
+        if np.any(norm == 0) or np.isnan(norm).any():
+            norm = np.ones_like(norm)  # Avoid division by zero or NaN
+
+        # Compute raw_weights safely
+        raw_weights = self.scores / norm
+
+        bittensor.logging.debug("raw_weights", raw_weights)
+        bittensor.logging.debug("raw_weight_uids", str(self.metagraph.uids.tolist()))
+
+        # For AsyncSubtensor, we need to manually handle the weight processing
+        # since process_weights_for_netuid doesn't support async subtensor methods
+        processed_weight_uids, processed_weights = await self._process_weights_async(
+            uids=self.metagraph.uids,
+            weights=raw_weights,
+            netuid=self.config.netuid,
+        )
+
+        bittensor.logging.debug("processed_weights", processed_weights)
+        bittensor.logging.debug("processed_weight_uids", processed_weight_uids)
+
+        # Check if we have any weights to set
+        if len(processed_weights) == 0:
+            bittensor.logging.warning("No weights to set - all scores are zero or below minimum threshold")
+            bittensor.logging.debug(f"Current scores: {self.scores}")
+            bittensor.logging.debug(f"Raw weights: {raw_weights}")
+            return
+
+        # Convert to uint16 weights and uids.
+        (
+            uint_uids,
+            uint_weights,
+
+        ) = bittensor.utils.weight_utils.convert_weights_and_uids_for_emit( # type: ignore
+            uids=processed_weight_uids, weights=processed_weights
+        )
+        bittensor.logging.debug("uint_weights", uint_weights)
+        bittensor.logging.debug("uint_uids", uint_uids)
+
+        # Set the weights on chain via our subtensor connection.
+        result, msg = await self.subtensor.set_weights(
+            wallet=self.wallet,
+            netuid=self.config.netuid,
+            uids=uint_uids,
+            weights=uint_weights,
+            wait_for_finalization=False,
+            wait_for_inclusion=False,
+            version_key=self.spec_version,
+        )
+        if result is True:
+            bittensor.logging.info("set_weights on chain successfully!")
+        else:
+            bittensor.logging.error("set_weights failed", msg)
+
+    async def _process_weights_async(self, uids, weights, netuid):
+        """Async version of weight processing that handles AsyncSubtensor methods."""
+        # Get the async subtensor parameters
+        min_allowed_weights = await self.subtensor.min_allowed_weights(netuid=netuid)
+        max_weight_limit = await self.subtensor.max_weight_limit(netuid=netuid)
+
+        bittensor.logging.debug(f"Processing weights: min_allowed={min_allowed_weights}, max_limit={max_weight_limit}")
+
+        # Filter out zero weights
+        non_zero_mask = weights > 0
+        non_zero_uids = uids[non_zero_mask]
+        non_zero_weights = weights[non_zero_mask]
+
+        bittensor.logging.debug(f"Non-zero weights found: {len(non_zero_weights)}")
+
+        if len(non_zero_weights) == 0:
+            bittensor.logging.debug("No non-zero weights found, returning empty arrays")
+            return np.array([]), np.array([])
+
+        # Check minimum weights requirement
+        if len(non_zero_weights) < min_allowed_weights:
+            bittensor.logging.warning(f"Not enough non-zero weights ({len(non_zero_weights)}) to meet minimum requirement ({min_allowed_weights})")
+            return np.array([]), np.array([])
+
+        # Normalize weights
+        total_weight = np.sum(non_zero_weights)
+        if total_weight > 0:
+            normalized_weights = non_zero_weights / total_weight
+        else:
+            normalized_weights = non_zero_weights
+
+        # Apply max weight limit
+        if max_weight_limit > 0:
+            normalized_weights = np.minimum(normalized_weights, max_weight_limit)
+            # Renormalize after applying limit
+            total_weight = np.sum(normalized_weights)
+            if total_weight > 0:
+                normalized_weights = normalized_weights / total_weight
+
+        bittensor.logging.debug(f"Processed weights: {len(normalized_weights)} weights with total {np.sum(normalized_weights)}")
+        return non_zero_uids, normalized_weights
 
     def resync_metagraph(self):
         """Resyncs the metagraph and updates the hotkeys and moving averages based on the new metagraph."""
