@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any
+from typing import Any
 import aiohttp
 import json
 from datetime import datetime
@@ -78,7 +78,7 @@ class CandleTAOClient:
         """Get the full scores endpoint URL"""
         return f"{self.base_url}/api/predictions/scores"
 
-    async def submit_predictions(self, predictions: list[CandleTAOPredictionSubmission]) -> Dict[str, Any]:
+    async def submit_predictions(self, predictions: list[CandleTAOPredictionSubmission]) -> dict[str, Any]:
         """
         Submit a batch of predictions to the CandleTAO API
 
@@ -123,7 +123,7 @@ class CandleTAOClient:
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON response from API: {e}")
 
-    async def submit_scores(self, scores: list[CandleTAOScoreSubmission]) -> Dict[str, Any]:
+    async def submit_scores(self, scores: list[CandleTAOScoreSubmission]) -> dict[str, Any]:
         """
         Submit a batch of prediction scores to the CandleTAO API
 
@@ -174,7 +174,7 @@ class CandleTAOClient:
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON response from API: {e}")
 
-    async def submit_single_score(self, score: CandleTAOScoreSubmission) -> Dict[str, Any]:
+    async def submit_single_score(self, score: CandleTAOScoreSubmission) -> dict[str, Any]:
         """
         Submit a single prediction score
 
@@ -186,7 +186,7 @@ class CandleTAOClient:
         """
         return await self.submit_scores([score])
 
-    async def submit_single_prediction(self, prediction: CandleTAOPredictionSubmission) -> Dict[str, Any]:
+    async def submit_single_prediction(self, prediction: CandleTAOPredictionSubmission) -> dict[str, Any]:
         """
         Submit a single prediction
 
@@ -200,7 +200,7 @@ class CandleTAOClient:
 
 
 # Convenience functions for quick submission
-async def submit_predictions(predictions: list[CandleTAOPredictionSubmission]) -> Dict[str, Any]:
+async def submit_predictions(predictions: list[CandleTAOPredictionSubmission]) -> dict[str, Any]:
     """
     Convenience function to submit predictions without managing client instance
 
@@ -214,7 +214,7 @@ async def submit_predictions(predictions: list[CandleTAOPredictionSubmission]) -
     return await client.submit_predictions(predictions)
 
 
-async def submit_prediction_scores(scores: list[CandleTAOScoreSubmission]) -> Dict[str, Any]:
+async def submit_prediction_scores(scores: list[CandleTAOScoreSubmission]) -> dict[str, Any]:
     """
     Convenience function to submit scores without managing client instance
 
