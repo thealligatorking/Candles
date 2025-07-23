@@ -12,7 +12,6 @@ from ..core.data import CandlePrediction
 from ..core.synapse import GetCandlePrediction
 from ..core.utils import get_next_timestamp_by_interval, is_miner
 
-
 class ProcessedResponse(BaseModel):
     response: GetCandlePrediction
     uid: int
@@ -53,10 +52,12 @@ def process_single_response(response: GetCandlePrediction, uid: int) -> Processe
     response.candle_prediction.miner_uid = uid
     response.candle_prediction.hotkey = response.axon.hotkey
     response.candle_prediction.prediction_date = datetime.now(timezone.utc)
+    # TODO: Fix round() function type annotation issue - confidence field type needs verification
     # round the confidence to 4 decimal places
+
     response.candle_prediction.confidence = round(
         response.candle_prediction.confidence, 4
-    )
+    ) # type: ignore
     return ProcessedResponse(response=response, uid=uid)
 
 
@@ -148,7 +149,7 @@ async def process_miner_requests(
 
 async def send_predictions_to_miners(
     validator, input_synapse: GetCandlePrediction, batch_uids: list[int]
-) -> tuple[list[CandlePrediction], list[int]]:
+) -> tuple[list[CandlePrediction], list[int]] | None:
     try:
         random.shuffle(batch_uids)
 

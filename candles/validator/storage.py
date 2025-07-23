@@ -5,6 +5,8 @@ import bittensor
 from ..core.storage.json_storage import BaseJsonStorage
 
 
+
+
 class JsonValidatorStorage(BaseJsonStorage):
     """Handles storage and retrieval of validator predictions in JSON format.
 
@@ -34,6 +36,14 @@ class JsonValidatorStorage(BaseJsonStorage):
                 existing_predictions = {}
 
         existing_predictions_by_interval = self._group_predictions_by_interval(existing_predictions)
+
+        # Log the number of predictions being saved
+        total_new_predictions = sum(
+            len(new_predictions[interval_id]['predictions'] if isinstance(new_predictions[interval_id], dict) and 'predictions' in new_predictions[interval_id] else new_predictions[interval_id])
+            for interval_id in new_predictions
+        )
+        bittensor.logging.debug(f"Saving {total_new_predictions} new predictions across {len(new_predictions)} intervals")
+
         merged_predictions = self._merge_new_with_existing_predictions(existing_predictions_by_interval, new_predictions)
 
         # bittensor.logging.info(f"Saving merged predictions: {merged_predictions}")
@@ -69,7 +79,7 @@ class JsonValidatorStorage(BaseJsonStorage):
         """Merges new predictions into the existing predictions grouped by interval.
 
         Adds new predictions to the appropriate interval group, overwriting existing predictions
-        for the same miner_uid.
+        for the same miner_uid AND prediction_id combination.
 
         Args:
             existing_predictions_by_interval: A dictionary of existing predictions grouped by interval ID.
@@ -90,11 +100,21 @@ class JsonValidatorStorage(BaseJsonStorage):
                         prediction_dict = new_prediction
 
                     new_miner_uid = prediction_dict.get("miner_uid")
+                    new_prediction_id = prediction_dict.get("prediction_id")
 
-                    # Remove existing prediction with same miner_uid if it exists
+                    # Count existing predictions that will be removed (same miner_uid AND prediction_id)
+                    removed_count = len([
+                        pred for pred in existing_predictions
+                        if pred.get("miner_uid") == new_miner_uid and pred.get("prediction_id") == new_prediction_id
+                    ])
+
+                    if removed_count > 0:
+                        bittensor.logging.debug(f"Removing {removed_count} duplicate predictions for miner_uid={new_miner_uid}, prediction_id={new_prediction_id}")
+
+                    # Remove existing prediction with same miner_uid AND prediction_id if it exists
                     existing_predictions = [
                         pred for pred in existing_predictions
-                        if pred.get("miner_uid") != new_miner_uid
+                        if not (pred.get("miner_uid") == new_miner_uid and pred.get("prediction_id") == new_prediction_id)
                     ]
 
                     # Add the new prediction

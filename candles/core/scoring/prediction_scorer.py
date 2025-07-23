@@ -22,7 +22,7 @@ class PredictionScorer(BaseScorer):
         self.price_client = price_client
         self.symbol = symbol
 
-    async def score_prediction(self, prediction: CandlePrediction, actual_data: dict[str, Any] = None) -> ScoringResult:
+    async def score_prediction(self, prediction: CandlePrediction, actual_data: dict[str, Any] | None = None) -> ScoringResult:
         """Score a prediction against actual market data.
 
         Args:
@@ -57,7 +57,7 @@ class PredictionScorer(BaseScorer):
         bittensor.logging.info(f"[yellow]Scoring result: {final_score}[/yellow]")
         return ScoringResult(
             prediction_id=prediction.prediction_id,
-            miner_uid=prediction.miner_uid,
+            miner_uid=prediction.miner_uid or 0,
             interval_id=prediction.interval_id,
             color_score=color_score,
             price_score=price_score,

@@ -40,7 +40,23 @@ class PredictionBatchScorer:
             scoring_tasks = []
             prediction_objects = []
 
+            # Track processed prediction IDs to avoid duplicates
+            processed_prediction_keys = set()
+
+            bittensor.logging.debug(f"Processing {len(predictions)} predictions for interval {interval_id}")
+
             for prediction_dict in predictions:
+                # Skip if we've already processed this prediction from this miner
+                prediction_id = prediction_dict.get('prediction_id')
+                miner_uid = prediction_dict.get('miner_uid')
+                prediction_key = (prediction_id, miner_uid)
+
+                if prediction_key in processed_prediction_keys:
+                    bittensor.logging.warning(f"Skipping duplicate prediction from miner {miner_uid} for prediction_id: {prediction_id}")
+                    continue
+
+                processed_prediction_keys.add(prediction_key)
+                bittensor.logging.debug(f"Processing prediction_id: {prediction_id} from miner_uid: {miner_uid}")
 
                 # Convert to CandlePrediction model
                 try:
@@ -57,6 +73,7 @@ class PredictionBatchScorer:
             # Execute all scoring tasks concurrently for this interval
             if scoring_tasks:
                 try:
+                    bittensor.logging.debug(f"Executing {len(scoring_tasks)} scoring tasks for interval {interval_id}")
                     interval_results = await asyncio.gather(*scoring_tasks, return_exceptions=True)
                     # Filter out exceptions and keep only successful results
                     successful_results = []
@@ -66,6 +83,7 @@ class PredictionBatchScorer:
                         else:
                             successful_results.append(result)
                     results[interval_id] = successful_results
+                    bittensor.logging.debug(f"Successfully scored {len(successful_results)} predictions for interval {interval_id}")
                 except Exception as e:
                     bittensor.logging.error(f"Error processing interval {interval_id}: {e}")
                     results[interval_id] = []

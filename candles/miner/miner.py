@@ -31,16 +31,13 @@ from candles.core.data import CandlePrediction, CandleColor, TimeInterval
 from candles.miner.base import BaseMinerNeuron
 from candles.miner.utils import get_file_predictions
 
-# Global miner instance for blacklist function
-miner = None
+
 
 class Miner(BaseMinerNeuron):
     """The Candles Miner."""
 
     def __init__(self, config=None):
-        global miner  # well this is certainly a choice
         super(Miner, self).__init__(config=config)
-        miner = self
 
     async def async_init(self):
         """
@@ -49,8 +46,7 @@ class Miner(BaseMinerNeuron):
         # Initialize the base miner async components
         await super().async_init()
 
-    @staticmethod
-    def blacklist(synapse: GetCandlePrediction) -> Tuple[bool, str]:
+    def blacklist(self, synapse: GetCandlePrediction) -> Tuple[bool, str]:
         """
         ** Warning do not use `tuple` or `typing.Tuple` in this function.
         ** Use `Tuple[bool, str]` instead.
@@ -69,39 +65,38 @@ class Miner(BaseMinerNeuron):
             Tuple[bool, str]: A tuple containing a boolean indicating whether the synapse's hotkey is blacklisted,
                             and a string providing the reason for the decision.
         """
-        if not synapse.dendrite.hotkey:
+        if not synapse.dendrite.hotkey: # type: ignore
             return True, "Hotkey not provided"
 
         # Get the miner instance from the synapse
-
-        registered = synapse.dendrite.hotkey in miner.metagraph.hotkeys
-        if miner.config.blacklist.allow_non_registered and not registered:
+        registered = synapse.dendrite.hotkey in self.metagraph.hotkeys # type: ignore
+        if self.config.blacklist.allow_non_registered and not registered:
             return False, "Allowing un-registered hotkey"
         elif not registered:
             bittensor.logging.trace(
-                f"Blacklisting un-registered hotkey {synapse.dendrite.hotkey}"
+                f"Blacklisting un-registered hotkey {synapse.dendrite.hotkey}" # type: ignore
             )
-            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey}"
+            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey}" # type: ignore
 
-        uid = miner.metagraph.hotkeys.index(synapse.dendrite.hotkey)
-        if miner.config.blacklist.force_validator_permit and not miner.metagraph.validator_permit[uid]:
+        uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey) # type: ignore
+        if self.config.blacklist.force_validator_permit and not self.metagraph.validator_permit[uid]:
             bittensor.logging.warning(
-                f"Blacklisting a request from non-validator hotkey {synapse.dendrite.hotkey}"
+                f"Blacklisting a request from non-validator hotkey {synapse.dendrite.hotkey}" # type: ignore
             )
             return True, "Non-validator hotkey"
 
-        stake = miner.metagraph.S[uid].item()
+        stake = self.metagraph.S[uid].item()
         if (
-            miner.config.blacklist.validator_min_stake
-            and stake < miner.config.blacklist.validator_min_stake
+            self.config.blacklist.validator_min_stake
+            and stake < self.config.blacklist.validator_min_stake
         ):
             bittensor.logging.warning(
-                f"Blacklisting request from {synapse.dendrite.hotkey} [uid={uid}], not enough stake -- {stake}"
+                f"Blacklisting request from {synapse.dendrite.hotkey} [uid={uid}], not enough stake -- {stake}" # type: ignore
             )
             return True, "Stake below minimum"
 
         bittensor.logging.trace(
-            f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}"
+            f"Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}" # type: ignore
         )
         return False, "Hotkey recognized!"
 
@@ -126,17 +121,17 @@ class Miner(BaseMinerNeuron):
         - A higher stake results in a higher priority value.
         """
         caller_uid = self.metagraph.hotkeys.index(
-            synapse.dendrite.hotkey
+            synapse.dendrite.hotkey # type: ignore
         )  # Get the caller index.
         prirority = float(
             self.metagraph.S[caller_uid]
         )  # Return the stake as the priority.
         bittensor.logging.trace(
-            f"Prioritizing {synapse.dendrite.hotkey} with value: ", prirority
+            f"Prioritizing {synapse.dendrite.hotkey} with value: ", prirority # type: ignore
         )
         return prirority
 
-    def find_prediction_file(self, interval: TimeInterval) -> str:
+    def find_prediction_file(self, interval: TimeInterval) -> str | None:
         """
         Find prediction files based on interval type. Searches in ~/.candles/data/ first,
         then falls back to PREDICTIONS_FILE_PATH env var.
@@ -232,7 +227,7 @@ class Miner(BaseMinerNeuron):
             price=price,
             color=color,
             confidence=confidence,
-            prediction_date=int(datetime.now(timezone.utc).timestamp()),
+            prediction_date=datetime.now(timezone.utc),
             interval=candle_prediction.interval,
             interval_id=interval_id,
             miner_uid=self.uid,
@@ -241,14 +236,14 @@ class Miner(BaseMinerNeuron):
 
     async def get_candle_prediction(self, synapse: GetCandlePrediction) -> GetCandlePrediction:
         bittensor.logging.debug(
-            f"Received GetCandlePrediction request in forward() from {synapse.dendrite.hotkey}."
+            f"Received GetCandlePrediction request in forward() from {synapse.dendrite.hotkey}." # type: ignore
         )
 
         synapse.candle_prediction = await self.make_candle_prediction(synapse.candle_prediction)
         synapse.version = 1
 
         bittensor.logging.success(
-            f"Returning CandlePrediction to [orange]{synapse.dendrite.hotkey}[/orange]:" +
+            f"Returning CandlePrediction to [orange]{synapse.dendrite.hotkey}[/orange]:" + # type: ignore
             f"\n color = [yellow]{synapse.candle_prediction.color}[/yellow]," +
             f"\n price = [blue]{synapse.candle_prediction.price}[/blue]," +
             f"\n confidence = [magenta]{synapse.candle_prediction.confidence}[/magenta]."
@@ -271,7 +266,7 @@ async def main():
         await miner.async_init()
         await miner.run()
     finally:
-        if not miner.config.mock:
+        if not miner.config.mock: # type: ignore
             await miner.cleanup()
 
 if __name__ == "__main__":
