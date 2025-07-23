@@ -53,7 +53,6 @@ class Validator(BaseValidatorNeuron):
         self.price_client = PriceClient(api_key=api_key, provider="coindesk")
         self.batch_scorer = PredictionBatchScorer(self.price_client)
 
-        # Initialize CandleTAO client
         try:
             self.candletao_client = CandleTAOClient()
             bittensor.logging.info("CandleTAO client initialized successfully")
