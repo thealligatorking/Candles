@@ -85,19 +85,19 @@ REQUIRED_VERSION="3.12"
 if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
     print_error "Python $REQUIRED_VERSION or higher is required. Found: $PYTHON_VERSION"
     print_status "Installing Python 3.12..."
-    
+
     # Add deadsnakes PPA for newer Python versions
     sudo apt-get install -y software-properties-common
     sudo add-apt-repository -y ppa:deadsnakes/ppa
     sudo apt-get update -qq
     sudo apt-get install -y python3.12 python3.12-venv python3.12-dev
-    
+
     # Create symlink if python3.12 is not the default
     if ! command -v python3.12 &> /dev/null; then
         print_error "Failed to install Python 3.12"
         exit 1
     fi
-    
+
     print_status "Python 3.12 installed successfully"
 fi
 
@@ -166,6 +166,7 @@ uv run candles/miner/miner.py \\
     --wallet.hotkey $HOTKEY_NAME \\
     --blacklist.validator_min_stake 0 \\
     --logging.info \\
+    --neuron.epoch_length 50 \\
     "\$@"
 EOF
 
@@ -175,7 +176,7 @@ chmod +x "$CUSTOM_MINER_SCRIPT"
 # Update CLAUDE.md with the new script information
 if [ -f "CLAUDE.md" ]; then
     print_status "Updating CLAUDE.md with custom miner script information..."
-    
+
     # Add a section about custom miner scripts if it doesn't exist
     if ! grep -q "Custom Miner Scripts" CLAUDE.md; then
         cat >> CLAUDE.md << EOF
