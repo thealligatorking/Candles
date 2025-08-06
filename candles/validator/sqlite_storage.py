@@ -116,7 +116,7 @@ class SQLiteValidatorStorage:
 
             conn.commit()
 
-    def save_miner_scores(self, miner_scores: dict[int, float], miner_hotkeys: dict[int, str] = None):
+    def save_miner_scores(self, miner_scores: dict[int, float], miner_hotkeys: dict[int, str]):
         """
         Save current miner scores to database.
 
@@ -182,7 +182,7 @@ class SQLiteValidatorStorage:
 
         bittensor.logging.debug(f"Saved {total_saved} scoring results to SQLite")
 
-    def save_score_history(self, miner_stats: dict[int, dict[str, Any]], days_since_registration: dict[int, int] = None):
+    def save_score_history(self, miner_stats: dict[int, dict[str, Any]], days_since_registration: dict[int, int]):
         """
         Save miner performance history to database.
 
@@ -494,13 +494,13 @@ class SQLiteValidatorStorage:
 
             return days_since_first
 
-    def clear_miner_history(self, miner_uid: int, old_hotkey: str = None):
+    def clear_miner_history(self, miner_uid: int, old_hotkey: str):
         """
         Clear all historical data for a miner when their hotkey changes.
 
         This method removes:
         - Score history records
-        - Scoring results 
+        - Scoring results
         - Current miner score entry
 
         Args:
@@ -541,10 +541,10 @@ class SQLiteValidatorStorage:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
-                SELECT prediction_id 
-                FROM scoring_results 
-                WHERE miner_uid = ? 
-                ORDER BY timestamp DESC 
+                SELECT prediction_id
+                FROM scoring_results
+                WHERE miner_uid = ?
+                ORDER BY timestamp DESC
                 LIMIT 1
             """, (miner_uid,))
 

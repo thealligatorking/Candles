@@ -125,9 +125,9 @@ EXTERNAL_IP=""
 
 # Try multiple methods to get external IP
 if command -v curl &> /dev/null; then
-    EXTERNAL_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
+    EXTERNAL_IP=$(curl -s -4 ifconfig.me || curl -s -4 ipinfo.io/ip || curl -s -4 icanhazip.com)
 elif command -v wget &> /dev/null; then
-    EXTERNAL_IP=$(wget -qO- ifconfig.me || wget -qO- ipinfo.io/ip)
+    EXTERNAL_IP=$(wget -qO- -4 ifconfig.me || wget -qO- -4 ipinfo.io/ip)
 fi
 
 # Fallback to local IP if external IP detection fails
