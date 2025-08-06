@@ -36,6 +36,13 @@ class CandleTAOScoreSubmission(CandlesBaseModel):
     timestamp: datetime
 
 
+class CandleTAOMinerScoreSubmission(CandlesBaseModel):
+    """Model for miner score submission data matching MinerScoreUpdateSchema"""
+    miner_uid: int
+    score: float
+    last_scored_prediction_id: int
+
+
 class CandleTAOClient:
     """Async client for submitting prediction scores to CandleTAO API"""
 
@@ -77,6 +84,11 @@ class CandleTAOClient:
     def scores_endpoint(self) -> str:
         """Get the full scores endpoint URL"""
         return f"{self.base_url}/api/predictions/scores"
+
+    @property
+    def miner_scores_endpoint(self) -> str:
+        """Get the full miner scores endpoint URL"""
+        return f"{self.base_url}/api/predictions/miner-scores"
 
     async def submit_predictions(self, predictions: list[CandleTAOPredictionSubmission]) -> dict[str, Any]:
         """
@@ -185,6 +197,51 @@ class CandleTAOClient:
             API response as dictionary
         """
         return await self.submit_scores([score])
+
+    async def submit_miner_scores(self, miner_scores: list[CandleTAOMinerScoreSubmission]) -> dict[str, Any]:
+        """
+        Submit a batch of miner scores to the CandleTAO API
+
+        Args:
+            miner_scores: List of miner score submissions to send
+
+        Returns:
+            API response as dictionary
+
+        Raises:
+            aiohttp.ClientError: On HTTP client errors
+            ValueError: On invalid response data
+        """
+        headers = {
+            "Authorization": f"Bearer {self.bearer_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Convert miner scores to dict format for JSON serialization
+        # The API expects the data structure to match MinerScoreUpdateSchema
+        payload = {
+            "data": [miner_score.model_dump(mode='json') for miner_score in miner_scores]
+        }
+
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.post(
+                self.miner_scores_endpoint,
+                headers=headers,
+                json=payload
+            ) as response:
+                if response.status >= 400:
+                    error_text = await response.text()
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=response.status,
+                        message=f"API request failed: {error_text}"
+                    )
+
+                try:
+                    return await response.json()
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON response from API: {e}")
 
     async def submit_single_prediction(self, prediction: CandleTAOPredictionSubmission) -> dict[str, Any]:
         """

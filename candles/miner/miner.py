@@ -245,7 +245,7 @@ class Miner(BaseMinerNeuron):
         bittensor.logging.success(
             f"Returning CandlePrediction to [orange]{synapse.dendrite.hotkey}[/orange]:" + # type: ignore
             f"\n color = [yellow]{synapse.candle_prediction.color}[/yellow]," +
-            f"\n price = [blue]{synapse.candle_prediction.price}[/blue]," +
+            f"\n price = [orange]{synapse.candle_prediction.price}[/orange]," +
             f"\n confidence = [magenta]{synapse.candle_prediction.confidence}[/magenta]."
         )
 

@@ -189,6 +189,42 @@ class BaseValidatorNeuron(BaseNeuron):
 
         return False
 
+    def detect_new_hotkeys(self):
+        """
+        Detects new hotkeys after a metagraph sync and handles their initialization.
+        Also detects when existing miner UIDs get new hotkeys and clears their scores.
+        """
+        # Handle case where metagraph has grown (new miners)
+        if len(self.hotkeys) < len(self.metagraph.hotkeys):
+            new_hotkeys = self.metagraph.hotkeys[len(self.hotkeys):]
+            bittensor.logging.info(f"New miners detected with hotkeys: {new_hotkeys}")
+            # Add new hotkeys to the local state
+            for new_hotkey in new_hotkeys:
+                self.scores = np.append(self.scores, 0)
+            self.hotkeys.extend(new_hotkeys)
+
+        # Check for hotkey changes in existing miner UIDs
+        for uid in range(min(len(self.hotkeys), len(self.metagraph.hotkeys))):
+            if self.hotkeys[uid] != self.metagraph.hotkeys[uid]:
+                old_hotkey = self.hotkeys[uid]
+                new_hotkey = self.metagraph.hotkeys[uid]
+                bittensor.logging.info(
+                    f"Hotkey change detected for miner UID {uid}: "
+                    f"{old_hotkey} -> {new_hotkey}. Clearing score."
+                )
+                # Clear the score for this miner UID due to hotkey change
+                self.scores[uid] = 0.0
+                # Update the stored hotkey
+                self.hotkeys[uid] = new_hotkey
+
+                # Clear historical data if SQLite storage is available
+                if hasattr(self, 'sqlite_storage') and self.sqlite_storage:
+                    try:
+                        self.sqlite_storage.clear_miner_history(uid, old_hotkey)
+                        bittensor.logging.info(f"Cleared historical data for miner UID {uid} with old hotkey {old_hotkey}")
+                    except Exception as e:
+                        bittensor.logging.error(f"Error clearing historical data for miner UID {uid}: {e}")
+
     async def run(self):
         """
         Async main execution loop for the validator neuron.
@@ -369,6 +405,55 @@ class BaseValidatorNeuron(BaseNeuron):
             except Exception as e:
                 bittensor.logging.error(f"Error in periodic weight setting: {e}")
 
+    def _apply_hardcoded_weights(self, raw_weights):
+        """
+        Apply hardcoded weight distribution: 80% to UID 147, 20% distributed among others.
+
+        Args:
+            raw_weights: The original raw weights array
+
+        Returns:
+            Modified weights array with hardcoded distribution
+        """
+        target_uid = 147
+        target_weight_ratio = 0.8  # 80%
+
+        # Check if target UID is within bounds
+        if target_uid >= len(raw_weights):
+            bittensor.logging.warning(f"Target UID {target_uid} is out of bounds for weights array of length {len(raw_weights)}")
+            return raw_weights
+
+        # Create new weights array
+        new_weights = np.zeros_like(raw_weights, dtype=float)
+
+        # Set 80% weight to target UID
+        new_weights[target_uid] = target_weight_ratio
+
+        # Distribute remaining 20% among all other UIDs proportionally to their original weights
+        remaining_weight = 1.0 - target_weight_ratio  # 20%
+
+        # Calculate total weight of non-target UIDs
+        non_target_weights = raw_weights.copy()
+        non_target_weights[target_uid] = 0  # Exclude target UID
+        total_non_target_weight = np.sum(non_target_weights)
+
+        if total_non_target_weight > 0:
+            # Distribute remaining weight proportionally among non-target UIDs
+            for uid in range(len(raw_weights)):
+                if uid != target_uid:
+                    new_weights[uid] = (raw_weights[uid] / total_non_target_weight) * remaining_weight
+        else:
+            # If no other weights, distribute remaining weight equally among non-target UIDs
+            non_target_count = len(raw_weights) - 1
+            if non_target_count > 0:
+                equal_weight = remaining_weight / non_target_count
+                for uid in range(len(raw_weights)):
+                    if uid != target_uid:
+                        new_weights[uid] = equal_weight
+
+        bittensor.logging.info(f"Applied hardcoded weights: {target_weight_ratio*100}% to UID {target_uid}, {remaining_weight*100}% distributed among others")
+        return new_weights
+
     def emission_control_scores(self, target_uid):
         scores = self.scores
         total_score = np.sum(scores)
@@ -451,6 +536,9 @@ class BaseValidatorNeuron(BaseNeuron):
         # Compute raw_weights safely
         raw_weights = self.scores / norm
 
+        # Apply hardcoded weight distribution: 80% to UID 147
+        raw_weights = self._apply_hardcoded_weights(raw_weights)
+
         bittensor.logging.debug("raw_weights", raw_weights)
         bittensor.logging.debug("raw_weight_uids", str(self.metagraph.uids.tolist()))
         # Process the raw weights to final_weights via subtensor limitations.
@@ -519,6 +607,9 @@ class BaseValidatorNeuron(BaseNeuron):
 
         # Compute raw_weights safely
         raw_weights = self.scores / norm
+
+        # Apply hardcoded weight distribution: 80% to UID 147
+        raw_weights = self._apply_hardcoded_weights(raw_weights)
 
         bittensor.logging.debug("raw_weights", raw_weights)
         bittensor.logging.debug("raw_weight_uids", str(self.metagraph.uids.tolist()))
@@ -643,10 +734,10 @@ class BaseValidatorNeuron(BaseNeuron):
         bittensor.logging.info(
             "Metagraph updated, re-syncing hotkeys, dendrite pool and moving averages"
         )
-        # Zero out all hotkeys that have been replaced.
-        for uid, hotkey in enumerate(self.hotkeys):
-            if hotkey != self.metagraph.hotkeys[uid]:
-                self.scores[uid] = 0  # hotkey has been replaced
+
+        # Use the enhanced detect_new_hotkeys method which handles both new miners
+        # and hotkey changes for existing miners with proper score clearing
+        self.detect_new_hotkeys()
 
         # Check to see if the metagraph has changed size.
         # If so, we need to add new hotkeys and moving averages.
@@ -657,7 +748,9 @@ class BaseValidatorNeuron(BaseNeuron):
             new_moving_average[:min_len] = self.scores[:min_len]
             self.scores = new_moving_average
 
-        # Update the hotkeys.
+        # Update the hotkeys to ensure we have the latest state
+        # (detect_new_hotkeys should have already updated individual hotkeys,
+        # but this ensures complete synchronization)
         self.hotkeys = copy.deepcopy(self.metagraph.hotkeys)
 
     def update_scores(self, rewards: np.ndarray, uids: list[int] | np.ndarray):
