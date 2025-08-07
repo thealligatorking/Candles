@@ -1,16 +1,12 @@
 <div align="center">
-  <img src="candles_sn31.png" alt="Candles Subnet" />
+  <img src="candles_sn31.png" alt="Candles Subnet" width="250" />
 </div>
 
 # Candles Subnet
 
 A decentralized cryptocurrency candle prediction network built on Bittensor. Miners compete to predict cryptocurrency price movements (candle colors and values), while validators score predictions against real market data.
 
-## 🚀 Testnet Launch Phase
 
-**⚠️ This is our testnet launch phase. More features, documentation, and improvements are coming soon!**
-
-This subnet is currently deployed on Bittensor's testnet (netuid 357) for testing and validation. Stay tuned for mainnet deployment and additional features.
 
 ## 🏗️ How It Works
 
@@ -215,9 +211,13 @@ cp hourly_predictions.csv ~/.candles/data/
 
 ## 🌐 Network Information
 
-- **Testnet netuid**: 357
-- **Network**: test
-- **Symbol**: TAO-USD (primary trading pair)
+   | Network  | netuid |
+   |----------|--------|
+   | mainnet  | 31     |
+   | testnet  | 357    |
+
+
+**Symbol**: TAO-USD (primary trading pair)
 
 ## 📚 Documentation
 
@@ -240,4 +240,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**🔥 Ready to predict the future of crypto? Join our testnet and start mining!**
+**🔥 Ready to predict the future of crypto? Join our subnet and start mining!**

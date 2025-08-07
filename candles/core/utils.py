@@ -251,8 +251,8 @@ def config(cls):
     """
     Returns the configuration object specific to this miner or validator after adding relevant arguments.
     --name candles-miner --
-    --netuid 357
-    --subtensor.network test
+    --netuid 357 or 31
+    --subtensor.network test or main
     --wallet.name {wallet}
     --wallet.hotkey {hotkey}
     --axon.port {port}

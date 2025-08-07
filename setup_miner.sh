@@ -159,9 +159,8 @@ cat > "$CUSTOM_MINER_SCRIPT" << EOF
 
 uv run candles/miner/miner.py \\
     --axon.external_ip $EXTERNAL_IP \\
-    --netuid 357 \\
+    --netuid 31 \\
     --axon.port 8092 \\
-    --subtensor.network test \\
     --wallet.name $WALLET_NAME \\
     --wallet.hotkey $HOTKEY_NAME \\
     --blacklist.validator_min_stake 0 \\
