@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This is the former development repo for candles and will not receive updates. For current please visit: https://github.com/CandlesTAO/candles
+
 <div align="center">
   <img src="candles_sn31.png" alt="Candles Subnet" width="250" />
 </div>
